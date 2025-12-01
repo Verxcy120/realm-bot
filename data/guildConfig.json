@@ -1,0 +1,21 @@
+{
+  "1440112720291696714": {
+    "logs": {
+      "chatRelay": true,
+      "joinsLeaves": true,
+      "playerDeaths": true,
+      "automod": true,
+      "realmBans": true,
+      "realmUnbans": true,
+      "realmKicks": true,
+      "realmInvites": true,
+      "commandExecution": true,
+      "watchlistAlerts": true
+    },
+    "logChannels": {
+      "chatRelay": "1440112721180754056",
+      "realmBans": "1440112721180754056"
+    },
+    "liveDetection": true
+  }
+}
