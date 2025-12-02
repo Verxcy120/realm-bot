@@ -24,6 +24,20 @@ function initDatabase() {
         )
     `);
 
+    // Migration: Add guild_id column if it doesn't exist (for older databases)
+    try {
+        const tableInfo = db.prepare("PRAGMA table_info(users)").all();
+        const hasGuildId = tableInfo.some(col => col.name === 'guild_id');
+        
+        if (!hasGuildId) {
+            console.log('Migrating database: Adding guild_id column...');
+            db.exec(`ALTER TABLE users ADD COLUMN guild_id TEXT`);
+            console.log('Migration complete: guild_id column added');
+        }
+    } catch (migrationError) {
+        console.error('Migration error:', migrationError);
+    }
+
     // Create TOS acceptance table
     db.exec(`
         CREATE TABLE IF NOT EXISTS tos_accepted (
