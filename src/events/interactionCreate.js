@@ -9,7 +9,7 @@ const OWNER_ID = process.env.OWNER_ID;
 
 // Helper function to ban a player from a realm using direct API call
 async function banPlayerFromRealm(authflow, realmId, xuid) {
-    const token = await authflow.getMinecraftBedrockToken();
+    const token = await authflow.getXboxToken('https://pocket.realms.minecraft.net/');
     
     const response = await fetch(`https://pocket.realms.minecraft.net/worlds/${realmId}/blocklist/${xuid}`, {
         method: 'POST',
@@ -32,7 +32,7 @@ async function banPlayerFromRealm(authflow, realmId, xuid) {
 
 // Helper function to unban a player from a realm using direct API call
 async function unbanPlayerFromRealm(authflow, realmId, xuid) {
-    const token = await authflow.getMinecraftBedrockToken();
+    const token = await authflow.getXboxToken('https://pocket.realms.minecraft.net/');
     
     const response = await fetch(`https://pocket.realms.minecraft.net/worlds/${realmId}/blocklist/${xuid}`, {
         method: 'DELETE',
