@@ -103,6 +103,43 @@ function initDatabase() {
         )
     `);
 
+    // Create guild settings table for permissions and logging
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS guild_settings (
+            guild_id TEXT PRIMARY KEY,
+            realm_id TEXT,
+            realm_name TEXT,
+            chat_relay_channel TEXT,
+            join_leave_channel TEXT,
+            death_log_channel TEXT,
+            ban_log_channel TEXT,
+            unban_log_channel TEXT,
+            kick_log_channel TEXT,
+            connect_role TEXT,
+            disconnect_role TEXT,
+            kick_role TEXT,
+            ban_role TEXT,
+            unban_role TEXT,
+            backup_role TEXT,
+            open_role TEXT,
+            close_role TEXT,
+            settings_role TEXT,
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        )
+    `);
+
+    // Create active connections table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS active_connections (
+            guild_id TEXT PRIMARY KEY,
+            realm_id TEXT,
+            realm_name TEXT,
+            connected_at INTEGER DEFAULT (strftime('%s', 'now')),
+            connected_by TEXT
+        )
+    `);
+
     console.log('📦 Database tables created/verified');
     return db;
 }
@@ -215,6 +252,117 @@ function getAllBlacklisted() {
     return stmt.all();
 }
 
+// Guild Settings functions
+function getGuildSettings(guildId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?');
+    return stmt.get(guildId);
+}
+
+function saveGuildSettings(guildId, settings) {
+    const db = getDb();
+    const existing = getGuildSettings(guildId);
+    
+    if (existing) {
+        const stmt = db.prepare(`
+            UPDATE guild_settings SET
+                realm_id = COALESCE(?, realm_id),
+                realm_name = COALESCE(?, realm_name),
+                chat_relay_channel = COALESCE(?, chat_relay_channel),
+                join_leave_channel = COALESCE(?, join_leave_channel),
+                death_log_channel = COALESCE(?, death_log_channel),
+                ban_log_channel = COALESCE(?, ban_log_channel),
+                unban_log_channel = COALESCE(?, unban_log_channel),
+                kick_log_channel = COALESCE(?, kick_log_channel),
+                connect_role = COALESCE(?, connect_role),
+                disconnect_role = COALESCE(?, disconnect_role),
+                kick_role = COALESCE(?, kick_role),
+                ban_role = COALESCE(?, ban_role),
+                unban_role = COALESCE(?, unban_role),
+                backup_role = COALESCE(?, backup_role),
+                open_role = COALESCE(?, open_role),
+                close_role = COALESCE(?, close_role),
+                settings_role = COALESCE(?, settings_role),
+                updated_at = strftime('%s', 'now')
+            WHERE guild_id = ?
+        `);
+        stmt.run(
+            settings.realm_id, settings.realm_name,
+            settings.chat_relay_channel, settings.join_leave_channel,
+            settings.death_log_channel, settings.ban_log_channel,
+            settings.unban_log_channel, settings.kick_log_channel,
+            settings.connect_role, settings.disconnect_role,
+            settings.kick_role, settings.ban_role,
+            settings.unban_role, settings.backup_role,
+            settings.open_role, settings.close_role,
+            settings.settings_role, guildId
+        );
+    } else {
+        const stmt = db.prepare(`
+            INSERT INTO guild_settings (guild_id, realm_id, realm_name, chat_relay_channel, join_leave_channel, death_log_channel, ban_log_channel, unban_log_channel, kick_log_channel, connect_role, disconnect_role, kick_role, ban_role, unban_role, backup_role, open_role, close_role, settings_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        stmt.run(
+            guildId, settings.realm_id, settings.realm_name,
+            settings.chat_relay_channel, settings.join_leave_channel,
+            settings.death_log_channel, settings.ban_log_channel,
+            settings.unban_log_channel, settings.kick_log_channel,
+            settings.connect_role, settings.disconnect_role,
+            settings.kick_role, settings.ban_role,
+            settings.unban_role, settings.backup_role,
+            settings.open_role, settings.close_role,
+            settings.settings_role
+        );
+    }
+}
+
+function clearGuildSettingField(guildId, field) {
+    const db = getDb();
+    const allowedFields = [
+        'chat_relay_channel', 'join_leave_channel', 'death_log_channel',
+        'ban_log_channel', 'unban_log_channel', 'kick_log_channel',
+        'connect_role', 'disconnect_role', 'kick_role', 'ban_role',
+        'unban_role', 'backup_role', 'open_role', 'close_role', 'settings_role'
+    ];
+    if (!allowedFields.includes(field)) return false;
+    
+    const stmt = db.prepare(`UPDATE guild_settings SET ${field} = NULL, updated_at = strftime('%s', 'now') WHERE guild_id = ?`);
+    return stmt.run(guildId);
+}
+
+// Active Connections functions
+function getActiveConnection(guildId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM active_connections WHERE guild_id = ?');
+    return stmt.get(guildId);
+}
+
+function saveActiveConnection(guildId, realmId, realmName, connectedBy) {
+    const db = getDb();
+    const stmt = db.prepare(`
+        INSERT INTO active_connections (guild_id, realm_id, realm_name, connected_by)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET
+            realm_id = excluded.realm_id,
+            realm_name = excluded.realm_name,
+            connected_at = strftime('%s', 'now'),
+            connected_by = excluded.connected_by
+    `);
+    return stmt.run(guildId, realmId, realmName, connectedBy);
+}
+
+function deleteActiveConnection(guildId) {
+    const db = getDb();
+    const stmt = db.prepare('DELETE FROM active_connections WHERE guild_id = ?');
+    return stmt.run(guildId);
+}
+
+function getAllActiveConnections() {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM active_connections');
+    return stmt.all();
+}
+
 module.exports = {
     initDatabase,
     getDb,
@@ -228,5 +376,12 @@ module.exports = {
     addToBlacklist,
     removeFromBlacklist,
     isBlacklisted,
-    getAllBlacklisted
+    getAllBlacklisted,
+    getGuildSettings,
+    saveGuildSettings,
+    clearGuildSettingField,
+    getActiveConnection,
+    saveActiveConnection,
+    deleteActiveConnection,
+    getAllActiveConnections
 };
