@@ -1,0 +1,104 @@
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { getUser, getGuildSettings } = require('../database/db');
+const { isConnected, kickPlayer, getConnection } = require('../utils/realmConnection');
+const Emojis = require('../utils/emojis');
+
+// Bypass users who can run commands without being the owner
+const BYPASS_USERS = ['1056287776863158312'];
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('realmkick')
+        .setDescription('Kick a player from the realm (requires bot to be connected)')
+        .addStringOption(option =>
+            option.setName('gamertag')
+                .setDescription('The Xbox gamertag of the player to kick')
+                .setRequired(true)
+        )
+        .addStringOption(option =>
+            option.setName('reason')
+                .setDescription('Reason for kicking the player')
+                .setRequired(false)
+        ),
+
+    async execute(interaction) {
+        // Check if user has bypass or is server owner
+        const isOwner = interaction.guild.ownerId === interaction.user.id;
+        const hasBypass = BYPASS_USERS.includes(interaction.user.id);
+        
+        // Check for permission role
+        const settings = getGuildSettings(interaction.guild.id);
+        const hasKickRole = settings?.kick_role && interaction.member.roles.cache.has(settings.kick_role);
+        
+        if (!isOwner && !hasBypass && !hasKickRole) {
+            const noPermEmbed = new EmbedBuilder()
+                .setTitle(`${Emojis.Error} Permission Denied`)
+                .setDescription('You don\'t have permission to use this command.\nRequired: Server Owner, Bypass User, or Kick Role')
+                .setColor(0xFF0000);
+            return interaction.reply({ embeds: [noPermEmbed], ephemeral: true });
+        }
+
+        // Check if connected
+        if (!isConnected(interaction.guild.id)) {
+            const notConnectedEmbed = new EmbedBuilder()
+                .setTitle(`${Emojis.Error} Not Connected`)
+                .setDescription('The bot is not connected to any realm.\nUse `/connect` to connect to a realm first.')
+                .setColor(0xFF0000);
+            return interaction.reply({ embeds: [notConnectedEmbed], ephemeral: true });
+        }
+
+        const gamertag = interaction.options.getString('gamertag');
+        const reason = interaction.options.getString('reason') || 'No reason provided';
+
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const result = await kickPlayer(interaction.guild.id, gamertag);
+
+            const successEmbed = new EmbedBuilder()
+                .setTitle(`${Emojis.Success} Player Kicked`)
+                .setDescription(`Successfully kicked **${gamertag}** from **${result.realmName}**`)
+                .addFields(
+                    { name: 'Reason', value: reason, inline: false },
+                    { name: 'Kicked By', value: interaction.user.tag, inline: true }
+                )
+                .setColor(0xFF9900)
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [successEmbed] });
+
+            // Log to kick channel if configured
+            if (settings?.kick_log_channel) {
+                try {
+                    const logChannel = await interaction.client.channels.fetch(settings.kick_log_channel);
+                    if (logChannel) {
+                        const logEmbed = new EmbedBuilder()
+                            .setTitle('👢 Player Kicked')
+                            .setDescription(`**${gamertag}** was kicked from **${result.realmName}**`)
+                            .addFields(
+                                { name: 'Reason', value: reason, inline: false },
+                                { name: 'Kicked By', value: `${interaction.user.tag} (${interaction.user.id})`, inline: false },
+                                { name: 'Server', value: interaction.guild.name, inline: true }
+                            )
+                            .setColor(0xFF9900)
+                            .setTimestamp();
+                        
+                        await logChannel.send({ embeds: [logEmbed] });
+                    }
+                } catch (logError) {
+                    console.error('Error sending kick log:', logError);
+                }
+            }
+
+        } catch (error) {
+            console.error('Error in realmkick command:', error);
+            
+            const errorEmbed = new EmbedBuilder()
+                .setTitle(`${Emojis.Error} Error`)
+                .setDescription(`Failed to kick player: ${error.message}`)
+                .setColor(0xFF0000);
+            
+            await interaction.editReply({ embeds: [errorEmbed] });
+        }
+    }
+};
