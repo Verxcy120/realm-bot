@@ -24,15 +24,61 @@ function initDatabase() {
         )
     `);
 
-    // Migration: Add guild_id column if it doesn't exist (for older databases)
+    // Migration: Ensure users table has proper schema with guild_id and UNIQUE constraint
     try {
         const tableInfo = db.prepare("PRAGMA table_info(users)").all();
         const hasGuildId = tableInfo.some(col => col.name === 'guild_id');
         
-        if (!hasGuildId) {
-            console.log('Migrating database: Adding guild_id column...');
-            db.exec(`ALTER TABLE users ADD COLUMN guild_id TEXT`);
-            console.log('Migration complete: guild_id column added');
+        // Check if UNIQUE constraint exists
+        const indexInfo = db.prepare("PRAGMA index_list(users)").all();
+        const hasUniqueConstraint = indexInfo.some(idx => idx.unique === 1 && idx.name.includes('discord_id'));
+        
+        if (!hasGuildId || !hasUniqueConstraint) {
+            console.log('🔄 Migrating database: Recreating users table with proper schema...');
+            
+            // Backup existing data
+            const existingUsers = db.prepare('SELECT * FROM users').all();
+            
+            // Drop old table and create new one with proper schema
+            db.exec(`DROP TABLE IF EXISTS users`);
+            db.exec(`
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_id TEXT,
+                    guild_id TEXT,
+                    xbox_gamertag TEXT,
+                    xbox_xuid TEXT,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    token_expires_at INTEGER,
+                    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                    updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+                    UNIQUE(discord_id, guild_id)
+                )
+            `);
+            
+            // Restore data (guild_id will be NULL for old records)
+            if (existingUsers.length > 0) {
+                const insertStmt = db.prepare(`
+                    INSERT INTO users (discord_id, guild_id, xbox_gamertag, xbox_xuid, access_token, refresh_token, token_expires_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+                for (const user of existingUsers) {
+                    insertStmt.run(
+                        user.discord_id,
+                        user.guild_id || null,
+                        user.xbox_gamertag,
+                        user.xbox_xuid,
+                        user.access_token,
+                        user.refresh_token,
+                        user.token_expires_at,
+                        user.created_at,
+                        user.updated_at
+                    );
+                }
+            }
+            
+            console.log('✅ Migration complete: users table recreated with proper schema');
         }
     } catch (migrationError) {
         console.error('Migration error:', migrationError);
