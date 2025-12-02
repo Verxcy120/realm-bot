@@ -1,5 +1,7 @@
 const { Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { hasAcceptedTOS, acceptTOS, revokeTOS, deleteUser, isBlacklisted } = require('../database/db');
+const { hasAcceptedTOS, acceptTOS, revokeTOS, deleteUser, isBlacklisted, getUserByGuild } = require('../database/db');
+const { getAuthflow } = require('../auth/xboxAuth');
+const { RealmAPI } = require('prismarine-realms');
 const Emojis = require('../utils/emojis');
 
 const TOS_URL = 'https://github.com/Verxcy120/Lunar-Automod-TOS';
@@ -174,6 +176,123 @@ module.exports = {
                     content: `${Emojis.Success} The Microsoft account has been unlinked from this server.`,
                     ephemeral: true
                 });
+                return;
+            }
+        }
+
+        // Handle select menu interactions
+        if (interaction.isStringSelectMenu()) {
+            const customId = interaction.customId;
+
+            // Realm Ban select menu
+            if (customId.startsWith('realmban_')) {
+                const parts = customId.split('_');
+                const xuid = parts[1];
+                const gamertag = parts.slice(2).join('_'); // Handle gamertags with underscores
+                const realmId = interaction.values[0];
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+
+                    // Ban the player
+                    await api.banPlayerFromRealm(realmId, xuid);
+
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Success} Player Banned`)
+                        .setDescription(`**${gamertag}** has been successfully banned from the Realm.`)
+                        .setColor(0x00FF00)
+                        .addFields(
+                            { name: `${Emojis.Crown} Player`, value: `\`${gamertag}\``, inline: true },
+                            { name: `${Emojis.Link} XUID`, value: `\`${xuid}\``, inline: true },
+                            { name: `${Emojis.Realms} Realm ID`, value: `\`${realmId}\``, inline: true }
+                        )
+                        .setFooter({ text: 'Lunar • Player banned successfully' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+                } catch (error) {
+                    console.error('Realm ban error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Ban Failed`)
+                        .setDescription(`Failed to ban **${gamertag}** from the Realm.`)
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
+                return;
+            }
+
+            // Realm Unban select menu
+            if (customId.startsWith('realmunban_')) {
+                const parts = customId.split('_');
+                const xuid = parts[1];
+                const gamertag = parts.slice(2).join('_'); // Handle gamertags with underscores
+                const realmId = interaction.values[0];
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+
+                    // Unban the player
+                    await api.unbanPlayerFromRealm(realmId, xuid);
+
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Success} Player Unbanned`)
+                        .setDescription(`**${gamertag}** has been successfully unbanned from the Realm.`)
+                        .setColor(0x00FF00)
+                        .addFields(
+                            { name: `${Emojis.Crown} Player`, value: `\`${gamertag}\``, inline: true },
+                            { name: `${Emojis.Link} XUID`, value: `\`${xuid}\``, inline: true },
+                            { name: `${Emojis.Realms} Realm ID`, value: `\`${realmId}\``, inline: true }
+                        )
+                        .setFooter({ text: 'Lunar • Player unbanned successfully' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+                } catch (error) {
+                    console.error('Realm unban error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Unban Failed`)
+                        .setDescription(`Failed to unban **${gamertag}** from the Realm.`)
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
                 return;
             }
         }
