@@ -1,4 +1,4 @@
-const { Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const { hasAcceptedTOS, acceptTOS, revokeTOS, deleteUser, isBlacklisted, getUserByGuild } = require('../database/db');
 const { getAuthflow } = require('../auth/xboxAuth');
 const { RealmAPI } = require('prismarine-realms');
@@ -328,6 +328,254 @@ module.exports = {
                     const errorEmbed = new EmbedBuilder()
                         .setTitle(`${Emojis.Error} Unban Failed`)
                         .setDescription(`Failed to unban **${gamertag}** from the Realm.`)
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
+                return;
+            }
+
+            // Realm Open select menu
+            if (customId === 'realm_open') {
+                const realmId = interaction.values[0];
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+                    
+                    // Get the realm and open it
+                    const realm = await api.getRealm(realmId);
+                    await realm.open();
+
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Success} Realm Opened`)
+                        .setDescription(`**${realm.name}** has been successfully opened!`)
+                        .setColor(0x00FF00)
+                        .addFields(
+                            { name: `${Emojis.Realms} Realm`, value: `\`${realm.name}\``, inline: true },
+                            { name: `${Emojis.Online} Status`, value: '`OPEN`', inline: true }
+                        )
+                        .setFooter({ text: 'Lunar • Realm opened successfully' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+                } catch (error) {
+                    console.error('Realm open error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Open Failed`)
+                        .setDescription('Failed to open the Realm.')
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
+                return;
+            }
+
+            // Realm Close select menu
+            if (customId === 'realm_close') {
+                const realmId = interaction.values[0];
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+                    
+                    // Get the realm and close it
+                    const realm = await api.getRealm(realmId);
+                    await realm.close();
+
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Success} Realm Closed`)
+                        .setDescription(`**${realm.name}** has been successfully closed!`)
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: `${Emojis.Realms} Realm`, value: `\`${realm.name}\``, inline: true },
+                            { name: `${Emojis.Offline} Status`, value: '`CLOSED`', inline: true }
+                        )
+                        .setFooter({ text: 'Lunar • Realm closed successfully' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+                } catch (error) {
+                    console.error('Realm close error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Close Failed`)
+                        .setDescription('Failed to close the Realm.')
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
+                return;
+            }
+
+            // Realm Backup Select menu (select realm to view backups)
+            if (customId === 'realm_backup_select') {
+                const realmId = interaction.values[0];
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+                    
+                    // Get the realm and its backups
+                    const realm = await api.getRealm(realmId);
+                    const backups = await realm.getBackups();
+
+                    if (!backups || backups.length === 0) {
+                        const noBackupsEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Backups Found`)
+                            .setDescription(`**${realm.name}** has no available backups.`)
+                            .setColor(0xFF0000)
+                            .setFooter({ text: 'Lunar • No backups available' });
+                        return interaction.editReply({ embeds: [noBackupsEmbed], components: [] });
+                    }
+
+                    // Create backup selection dropdown (max 25 options)
+                    const backupOptions = backups.slice(0, 25).map((backup, index) => {
+                        const date = new Date(backup.lastModifiedDate);
+                        const dateStr = date.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        return {
+                            label: `Backup ${index + 1} - ${dateStr}`,
+                            description: `Size: ${backup.size ? Math.round(backup.size / 1024 / 1024) + 'MB' : 'Unknown'}`,
+                            value: `${realmId}_${backup.backupId}_${backup.lastModifiedDate}`
+                        };
+                    });
+
+                    const selectMenu = new StringSelectMenuBuilder()
+                        .setCustomId('realm_backup_restore')
+                        .setPlaceholder('Select a backup to restore')
+                        .addOptions(backupOptions);
+
+                    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+                    const backupEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Realms} Backups for ${realm.name}`)
+                        .setDescription(`Found **${backups.length}** backup(s).\n\nSelect a backup to restore your Realm to that point in time.\n\n⚠️ **Warning:** Restoring a backup will overwrite your current world!`)
+                        .setColor(0x5865F2)
+                        .setFooter({ text: 'Lunar • Select a backup to restore' });
+
+                    await interaction.editReply({ embeds: [backupEmbed], components: [row] });
+
+                } catch (error) {
+                    console.error('Realm backup error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Backup Failed`)
+                        .setDescription('Failed to fetch backups for the Realm.')
+                        .setColor(0xFF0000)
+                        .addFields(
+                            { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
+                        )
+                        .setFooter({ text: 'Lunar • Please try again' });
+
+                    await interaction.editReply({ embeds: [errorEmbed], components: [] });
+                }
+                return;
+            }
+
+            // Realm Backup Restore menu (restore selected backup)
+            if (customId === 'realm_backup_restore') {
+                const [realmId, backupId, lastModifiedDate] = interaction.values[0].split('_');
+
+                await interaction.deferUpdate();
+
+                try {
+                    const userData = getUserByGuild(interaction.guild.id);
+                    if (!userData) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setTitle(`${Emojis.Error} No Account Linked`)
+                            .setDescription('No Microsoft account is linked to this server.')
+                            .setColor(0xFF0000);
+                        return interaction.editReply({ embeds: [errorEmbed], components: [] });
+                    }
+
+                    const authflow = getAuthflow(userData.discord_id);
+                    const api = RealmAPI.from(authflow, 'bedrock');
+                    
+                    // Restore the backup
+                    await api.restoreRealmFromBackup(realmId, backupId, lastModifiedDate);
+
+                    const date = new Date(lastModifiedDate);
+                    const dateStr = date.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Success} Backup Restored`)
+                        .setDescription('The Realm has been successfully restored to the selected backup!')
+                        .setColor(0x00FF00)
+                        .addFields(
+                            { name: `${Emojis.Realms} Realm ID`, value: `\`${realmId}\``, inline: true },
+                            { name: `${Emojis.Timer} Backup Date`, value: `\`${dateStr}\``, inline: true }
+                        )
+                        .setFooter({ text: 'Lunar • Backup restored successfully' })
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+                } catch (error) {
+                    console.error('Realm restore error:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setTitle(`${Emojis.Error} Restore Failed`)
+                        .setDescription('Failed to restore the backup.')
                         .setColor(0xFF0000)
                         .addFields(
                             { name: 'Error', value: `\`\`\`${error.message || 'Unknown error'}\`\`\``, inline: false }
