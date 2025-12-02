@@ -7,6 +7,51 @@ const Emojis = require('../utils/emojis');
 const TOS_URL = 'https://github.com/Verxcy120/Lunar-Automod-TOS';
 const OWNER_ID = process.env.OWNER_ID;
 
+// Helper function to ban a player from a realm using direct API call
+async function banPlayerFromRealm(authflow, realmId, xuid) {
+    const token = await authflow.getMinecraftBedrockToken();
+    
+    const response = await fetch(`https://pocket.realms.minecraft.net/worlds/${realmId}/blocklist/${xuid}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `XBL3.0 x=${token.userHash};${token.XSTSToken}`,
+            'Client-Version': '1.17.41',
+            'User-Agent': 'MCPE/UWP',
+            'Accept': '*/*',
+            'Content-Type': 'application/json'
+        }
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to ban player: ${response.status} ${errorText}`);
+    }
+    
+    return true;
+}
+
+// Helper function to unban a player from a realm using direct API call
+async function unbanPlayerFromRealm(authflow, realmId, xuid) {
+    const token = await authflow.getMinecraftBedrockToken();
+    
+    const response = await fetch(`https://pocket.realms.minecraft.net/worlds/${realmId}/blocklist/${xuid}`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `XBL3.0 x=${token.userHash};${token.XSTSToken}`,
+            'Client-Version': '1.17.41',
+            'User-Agent': 'MCPE/UWP',
+            'Accept': '*/*'
+        }
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to unban player: ${response.status} ${errorText}`);
+    }
+    
+    return true;
+}
+
 // Commands that don't require TOS acceptance
 const TOS_EXEMPT_COMMANDS = [];
 
@@ -204,10 +249,9 @@ module.exports = {
                     }
 
                     const authflow = getAuthflow(userData.discord_id);
-                    const api = RealmAPI.from(authflow, 'bedrock');
 
-                    // Ban the player
-                    await api.banPlayerFromRealm(realmId, xuid);
+                    // Ban the player using direct API call
+                    await banPlayerFromRealm(authflow, realmId, xuid);
 
                     const successEmbed = new EmbedBuilder()
                         .setTitle(`${Emojis.Success} Player Banned`)
@@ -260,10 +304,9 @@ module.exports = {
                     }
 
                     const authflow = getAuthflow(userData.discord_id);
-                    const api = RealmAPI.from(authflow, 'bedrock');
 
-                    // Unban the player
-                    await api.unbanPlayerFromRealm(realmId, xuid);
+                    // Unban the player using direct API call
+                    await unbanPlayerFromRealm(authflow, realmId, xuid);
 
                     const successEmbed = new EmbedBuilder()
                         .setTitle(`${Emojis.Success} Player Unbanned`)
