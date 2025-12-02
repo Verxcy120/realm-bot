@@ -1,0 +1,172 @@
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const dbPath = path.join(__dirname, '../../data/realmshield.db');
+let db;
+
+function initDatabase() {
+    db = new Database(dbPath);
+    
+    // Create users table to store linked Microsoft accounts (per guild)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id TEXT,
+            guild_id TEXT,
+            xbox_gamertag TEXT,
+            xbox_xuid TEXT,
+            access_token TEXT,
+            refresh_token TEXT,
+            token_expires_at INTEGER,
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+            UNIQUE(discord_id, guild_id)
+        )
+    `);
+
+    // Create TOS acceptance table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS tos_accepted (
+            discord_id TEXT PRIMARY KEY,
+            accepted_at INTEGER DEFAULT (strftime('%s', 'now')),
+            tos_version TEXT DEFAULT '1.0'
+        )
+    `);
+
+    // Create blacklist table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS blacklist (
+            discord_id TEXT PRIMARY KEY,
+            reason TEXT,
+            blacklisted_by TEXT,
+            blacklisted_at INTEGER DEFAULT (strftime('%s', 'now'))
+        )
+    `);
+
+    console.log('📦 Database tables created/verified');
+    return db;
+}
+
+function getDb() {
+    if (!db) {
+        throw new Error('Database not initialized. Call initDatabase() first.');
+    }
+    return db;
+}
+
+// User functions
+function saveUser(discordId, guildId, xboxData, tokens) {
+    const db = getDb();
+    const stmt = db.prepare(`
+        INSERT INTO users (discord_id, guild_id, xbox_gamertag, xbox_xuid, access_token, refresh_token, token_expires_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+        ON CONFLICT(discord_id, guild_id) DO UPDATE SET
+            xbox_gamertag = excluded.xbox_gamertag,
+            xbox_xuid = excluded.xbox_xuid,
+            access_token = excluded.access_token,
+            refresh_token = excluded.refresh_token,
+            token_expires_at = excluded.token_expires_at,
+            updated_at = strftime('%s', 'now')
+    `);
+    
+    stmt.run(
+        discordId,
+        guildId,
+        xboxData.gamertag,
+        xboxData.xuid,
+        tokens.accessToken,
+        tokens.refreshToken,
+        tokens.expiresAt
+    );
+}
+
+function getUser(discordId, guildId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM users WHERE discord_id = ? AND guild_id = ?');
+    return stmt.get(discordId, guildId);
+}
+
+function getUserByGuild(guildId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM users WHERE guild_id = ?');
+    return stmt.get(guildId);
+}
+
+function deleteUser(discordId, guildId) {
+    const db = getDb();
+    const stmt = db.prepare('DELETE FROM users WHERE discord_id = ? AND guild_id = ?');
+    return stmt.run(discordId, guildId);
+}
+
+// TOS functions
+function hasAcceptedTOS(discordId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM tos_accepted WHERE discord_id = ?');
+    return stmt.get(discordId);
+}
+
+function acceptTOS(discordId, version = '1.0') {
+    const db = getDb();
+    const stmt = db.prepare(`
+        INSERT INTO tos_accepted (discord_id, tos_version)
+        VALUES (?, ?)
+        ON CONFLICT(discord_id) DO UPDATE SET
+            accepted_at = strftime('%s', 'now'),
+            tos_version = excluded.tos_version
+    `);
+    return stmt.run(discordId, version);
+}
+
+function revokeTOS(discordId) {
+    const db = getDb();
+    const stmt = db.prepare('DELETE FROM tos_accepted WHERE discord_id = ?');
+    return stmt.run(discordId);
+}
+
+// Blacklist functions
+function addToBlacklist(discordId, reason, blacklistedBy) {
+    const db = getDb();
+    const stmt = db.prepare(`
+        INSERT INTO blacklist (discord_id, reason, blacklisted_by)
+        VALUES (?, ?, ?)
+        ON CONFLICT(discord_id) DO UPDATE SET
+            reason = excluded.reason,
+            blacklisted_by = excluded.blacklisted_by,
+            blacklisted_at = strftime('%s', 'now')
+    `);
+    return stmt.run(discordId, reason, blacklistedBy);
+}
+
+function removeFromBlacklist(discordId) {
+    const db = getDb();
+    const stmt = db.prepare('DELETE FROM blacklist WHERE discord_id = ?');
+    return stmt.run(discordId);
+}
+
+function isBlacklisted(discordId) {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM blacklist WHERE discord_id = ?');
+    return stmt.get(discordId);
+}
+
+function getAllBlacklisted() {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM blacklist ORDER BY blacklisted_at DESC');
+    return stmt.all();
+}
+
+module.exports = {
+    initDatabase,
+    getDb,
+    saveUser,
+    getUser,
+    getUserByGuild,
+    deleteUser,
+    hasAcceptedTOS,
+    acceptTOS,
+    revokeTOS,
+    addToBlacklist,
+    removeFromBlacklist,
+    isBlacklisted,
+    getAllBlacklisted
+};
